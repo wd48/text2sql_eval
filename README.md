@@ -79,4 +79,6 @@ sql-eval/
 
 ## 6. reference link
 
-https://github.com/defog-ai/sql-eval 
+[sql-eval github link](https://github.com/defog-ai/sql-eval)   
+[DIN-SQL 논문](참고자료/paper/2023NeurIPS_DIN-SQL_Decomposed.pdf)  
+[MMSQL 논문](참고자료/paper/2023NeurIPS_DIN-SQL_Decomposed.pdf)  
