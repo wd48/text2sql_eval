@@ -1,5 +1,4 @@
 import argparse
-from runners.langchain_runner import LangChainOllamaRunner
 
 """CLI entry point for SQL Evaluation. 
 기존 sql-eval의 main.py를 리팩토링하여 Runner Factory 패턴을 적용하고, 모델별 Runner를 유연하게 선택할 수 있도록 개선합니다. 
@@ -14,6 +13,8 @@ def main():
 
     # Runner Factory 패턴 적용
     if args.model == "llama3-langchain":
+        # LangChain 계열 의존성은 해당 모델 사용 시점에만 로드합니다.
+        from runners.langchain_runner import LangChainOllamaRunner
         runner = LangChainOllamaRunner(model_name="llama3")
     elif args.model == "gpt-4":
         pass  # 기존 OpenAI Runner 로직

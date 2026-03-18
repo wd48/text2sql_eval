@@ -1,0 +1,21 @@
+question,schema,gold_sql
+How many singers do we have?,,SELECT count(*) FROM singer
+What is the total number of singers?,,SELECT count(*) FROM singer
+"Show name, country, age for all singers ordered by age from the oldest to the youngest.",,"SELECT name ,  country ,  age FROM singer ORDER BY age DESC"
+"What are the names, countries, and ages for every singer in descending order of age?",,"SELECT name ,  country ,  age FROM singer ORDER BY age DESC"
+"What is the average, minimum, and maximum age of all singers from France?",,"SELECT avg(age) ,  min(age) ,  max(age) FROM singer WHERE country  =  'France'"
+"What is the average, minimum, and maximum age for all French singers?",,"SELECT avg(age) ,  min(age) ,  max(age) FROM singer WHERE country  =  'France'"
+Show the name and the release year of the song by the youngest singer.,,"SELECT song_name ,  song_release_year FROM singer ORDER BY age LIMIT 1"
+What are the names and release years for all the songs of the youngest singer?,,"SELECT song_name ,  song_release_year FROM singer ORDER BY age LIMIT 1"
+What are all distinct countries where singers above age 20 are from?,,SELECT DISTINCT country FROM singer WHERE age  >  20
+What are  the different countries with singers above age 20?,,SELECT DISTINCT country FROM singer WHERE age  >  20
+Show all countries and the number of singers in each country.,,"SELECT country ,  count(*) FROM singer GROUP BY country"
+How many singers are from each country?,,"SELECT country ,  count(*) FROM singer GROUP BY country"
+List all song names by singers above the average age.,,SELECT song_name FROM singer WHERE age  >  (SELECT avg(age) FROM singer)
+What are all the song names by singers who are older than average?,,SELECT song_name FROM singer WHERE age  >  (SELECT avg(age) FROM singer)
+Show location and name for all stadiums with a capacity between 5000 and 10000.,,"SELECT LOCATION ,  name FROM stadium WHERE capacity BETWEEN 5000 AND 10000"
+What are the locations and names of all stations with capacity between 5000 and 10000?,,"SELECT LOCATION ,  name FROM stadium WHERE capacity BETWEEN 5000 AND 10000"
+What is the maximum capacity and the average of all stadiums ?,,"select max(capacity), average from stadium"
+What is the average and maximum capacities for all stadiums ?,,"select avg(capacity) ,  max(capacity) from stadium"
+What is the name and capacity for the stadium with highest average attendance?,,"SELECT name ,  capacity FROM stadium ORDER BY average DESC LIMIT 1"
+What is the name and capacity for the stadium with the highest average attendance?,,"SELECT name ,  capacity FROM stadium ORDER BY average DESC LIMIT 1"

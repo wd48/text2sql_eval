@@ -11,7 +11,7 @@ from langchain_core.output_parsers import StrOutputParser
 - 불필요한 LLM 호출을 방지하기 위해 질문 검증 단계에서 답변 불가 상태를 조기에 감지하여 파이프라인을 종료하는 최적화 적용
 """
 class LangChainOllamaRunner:
-    def __init__(self, model_name="llama3", prompt_file_path="prompts/prompt_langchain.json"):
+    def __init__(self, model_name="gemma3n", prompt_file_path="prompts/prompt_langchain.json"):
         # 로컬 환경의 Ollama LLM 초기화 (명확한 추론을 위해 temperature를 낮게 설정)
         self.llm = ChatOllama(model=model_name, temperature=0.1)
         self.output_parser = StrOutputParser()
@@ -58,9 +58,9 @@ class LangChainOllamaRunner:
         return final_sql
 
 
-# 실행 예시 (로컬에 Ollama가 설치되어 있고, llama3 모델이 pull 되어 있어야 함)
+# 실행 예시 (로컬에 Ollama가 설치되어 있고, 모델이 pull 되어 있어야 함)
 if __name__ == "__main__":
-    runner = LangChainOllamaRunner(model_name="llama3")
+    runner = LangChainOllamaRunner(model_name="gemma3n")
 
     sample_schema = "Table: employees, Columns: [emp_id, name, department, salary]"
     sample_question = "영업팀에서 급여가 가장 높은 직원의 이름은 무엇인가요?"
