@@ -1,7 +1,9 @@
 import argparse
-# 기존 Runner import 생략
 from runners.langchain_runner import LangChainOllamaRunner
 
+"""CLI entry point for SQL Evaluation. 
+기존 sql-eval의 main.py를 리팩토링하여 Runner Factory 패턴을 적용하고, 모델별 Runner를 유연하게 선택할 수 있도록 개선합니다. 
+기존 OpenAI Runner 로직은 유지하되, 새로운 LangChain Ollama Runner를 추가하여 다양한 모델을 지원할 수 있도록 확장성을 확보합니다."""
 
 def main():
     parser = argparse.ArgumentParser(description="Run SQL Evaluation")

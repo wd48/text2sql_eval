@@ -1,74 +1,60 @@
 # LangChain + Ollama pipeline runner
-from langchain_community.chat_models import ChatOllama
-from langchain_core.prompts import ChatPromptTemplate
+import json
+
+from langchain_ollama import ChatOllama
+from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
+""" LangChain LCEL 기반 4단계 파이프라인 핵심 로직
+- Ollama LLM을 활용하여 질문 분류, 스키마 링크, 초안 생성, 자기 교정 단계로 SQL 생성
+- 각 단계별로 명확한 프롬프트와 출력 파싱을 적용하여 모델의 추론을 체계적으로 유도
+- 불필요한 LLM 호출을 방지하기 위해 질문 검증 단계에서 답변 불가 상태를 조기에 감지하여 파이프라인을 종료하는 최적화 적용
+"""
 class LangChainOllamaRunner:
-    def __init__(self, model_name="llama3", temperature=0.0):
-        # 1. Ollama LLM 초기화 (로컬에서 Ollama 서버가 실행 중이어야 함)
-        self.llm = ChatOllama(model=model_name, temperature=temperature)
+    def __init__(self, model_name="llama3", prompt_file_path="prompts/prompt_langchain.json"):
+        # 로컬 환경의 Ollama LLM 초기화 (명확한 추론을 위해 temperature를 낮게 설정)
+        self.llm = ChatOllama(model=model_name, temperature=0.1)
         self.output_parser = StrOutputParser()
+        self.prompts = self._load_prompts(prompt_file_path)
 
-        # 2. 단계별 Prompt Templates 정의 (DIN-SQL 및 MMSQL 방법론 적용)
-        self.class_prompt = ChatPromptTemplate.from_template(
-            "주어진 Schema를 바탕으로 다음 질문에 답할 수 있는지 분류해.\n"
-            "분류 기준: [Answerable, Ambiguous, Unanswerable]\n"
-            "Schema: {schema}\n"
-            "Question: {question}\n"
-            "Classification:"
-        )
+    def _load_prompts(self, filepath):
+        """JSON 파일에서 4단계 파이프라인용 프롬프트를 로드합니다."""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
 
-        self.link_prompt = ChatPromptTemplate.from_template(
-            "주어진 질문에 답하기 위해 필요한 Table과 Column을 Schema에서 찾아 나열해.\n"
-            "Schema: {schema}\n"
-            "Question: {question}\n"
-            "Linked Schema:"
-        )
+    def generate_sql(self, question: str, schema: str) -> str:
+        """4 Phase 파이프라인을 순차적으로 실행하여 최종 SQL을 생성합니다."""
 
-        self.gen_prompt = ChatPromptTemplate.from_template(
-            "다음 추출된 스키마 정보를 바탕으로 질문에 대한 SQLite SQL 쿼리를 작성해.\n"
-            "Linked Schema: {linked_schema}\n"
-            "Question: {question}\n"
-            "SQL Query:"
-        )
+        # Phase 1: Question Classification (질문 검증)
+        prompt_p1 = PromptTemplate.from_template(self.prompts["phase_1_classification"])
+        chain_1 = prompt_p1 | self.llm | self.output_parser
+        classification_result = chain_1.invoke({"question": question, "schema": schema}).strip()
 
-        self.correct_prompt = ChatPromptTemplate.from_template(
-            "주어진 질문에 대해 작성된 SQLite SQL 쿼리를 검토하고 수정해.\n"
-            "- 명시적으로 언급된 값을 사용했는지 확인\n"
-            "- Foreign Key를 사용한 JOIN 조건이 맞는지 확인\n"
-            "문제가 있다면 수정하고, 없다면 쿼리를 그대로 반환해.\n\n"
-            "Question: {question}\n"
-            "SQLite SQL Query: {draft_sql}\n"
-            "Fixed SQL Query:"
-        )
+        # 답변 불가 상태면 파이프라인 즉시 종료 (연산 낭비 방지)
+        if "Answerable" not in classification_result:
+            return f"-- 시스템 알림: 해당 질문은 현재 스키마로 답변할 수 없습니다. ({classification_result})"
 
-    def generate_sql(self, question: str, schema_info: str) -> str:
-        """
-        LangChain의 Chain을 활용한 단계별 추론(Decomposition) 파이프라인
-        """
-        # Step 1: Question Classification Chain (MMSQL)
-        class_chain = self.class_prompt | self.llm | self.output_parser
-        classification = class_chain.invoke({"schema": schema_info, "question": question})
+        # Phase 2: Schema Linking (필요한 Table/Column 추출)
+        prompt_p2 = PromptTemplate.from_template(self.prompts["phase_2_schema_linking"])
+        chain_2 = prompt_p2 | self.llm | self.output_parser
+        linked_schema = chain_2.invoke({"question": question, "schema": schema})
 
-        if "Unanswerable" in classification or "Ambiguous" in classification:
-            return "ERROR: 질문이 모호하거나 답변할 수 없습니다."
+        # Phase 3: Draft Generation (초안 생성)
+        prompt_p3 = PromptTemplate.from_template(self.prompts["phase_3_draft_generation"])
+        chain_3 = prompt_p3 | self.llm | self.output_parser
+        draft_sql = chain_3.invoke({"question": question, "linked_schema": linked_schema})
 
-        # Step 2: Schema Linking Chain (DIN-SQL)
-        link_chain = self.link_prompt | self.llm | self.output_parser
-        linked_schema = link_chain.invoke({"schema": schema_info, "question": question})
+        # Phase 4: Self-Correction (오류 교정 및 최종 출력)
+        prompt_p4 = PromptTemplate.from_template(self.prompts["phase_4_self_correction"])
+        chain_4 = prompt_p4 | self.llm | self.output_parser
+        final_sql = chain_4.invoke({
+            "question": question,
+            "draft_sql": draft_sql,
+            "schema": schema
+        })
 
-        # Step 3: Draft Query Generation Chain (DIN-SQL)
-        gen_chain = self.gen_prompt | self.llm | self.output_parser
-        draft_sql = gen_chain.invoke({"linked_schema": linked_schema, "question": question})
-
-        # Step 4: Self-Correction Chain (DIN-SQL)
-        # 생성된 초안을 다시 LLM에 넣어 검증
-        correct_chain = self.correct_prompt | self.llm | self.output_parser
-        final_sql = correct_chain.invoke({"draft_sql": draft_sql, "question": question})
-
-        # 불필요한 마크다운 태그(예: ```sql ... ```) 제거 로직 추가 가능
+        # 쿼리 외의 불필요한 텍스트 제거 (후처리)
         final_sql = final_sql.replace("```sql", "").replace("```", "").strip()
-
         return final_sql
 
 
