@@ -1,9 +1,16 @@
 # LangChain + Ollama pipeline runner
 import json
+import os
 
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+
+# GPU 설정: Ollama가 GPU를 사용하도록 환경변수 설정
+# OLLAMA_NUM_GPU=-1: 모든 모델 레이어를 GPU에 로드
+# CUDA/ROCm이 설치되어 있으면 자동으로 사용됩니다
+if not os.environ.get('OLLAMA_NUM_GPU'):
+    os.environ['OLLAMA_NUM_GPU'] = '-1'  # 모든 레이어를 GPU 메모리에 로드
 
 """ LangChain LCEL 기반 4단계 파이프라인 핵심 로직
 - Ollama LLM을 활용하여 질문 분류, 스키마 링크, 초안 생성, 자기 교정 단계로 SQL 생성
@@ -12,7 +19,10 @@ from langchain_core.output_parsers import StrOutputParser
 """
 class LangChainOllamaRunner:
     def __init__(self, model_name="gemma3n", prompt_file_path="prompts/prompt_langchain.json"):
-        # 로컬 환경의 Ollama LLM 초기화 (명확한 추론을 위해 temperature를 낮게 설정)
+        # 로컬 환경의 Ollama LLM 초기화
+        # - temperature=0.1: 명확한 추론을 위해 낮게 설정 (결정론적 SQL 생성)
+        # - GPU 사용: OLLAMA_NUM_GPU=-1로 설정되어 모든 레이어가 GPU에서 실행됨
+        #   (CUDA/ROCm이 설치되어 있으면 자동으로 사용, 없으면 CPU로 fallback)
         self.llm = ChatOllama(model=model_name, temperature=0.1)
         self.output_parser = StrOutputParser()
         self.prompts = self._load_prompts(prompt_file_path)
