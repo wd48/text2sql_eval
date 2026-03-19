@@ -6,6 +6,7 @@ import pandas as pd
 - SQL 문법 오류, 존재하지 않는 테이블/컬럼 참조 등의 에러 발생 시 False로 처리하여 모델의 실행 가능 여부를 평가합니다.
 - 전체 결과 데이터프레임을 순회하며 정확도를 계산하는 함수도 포함되어 있습니다. (results_df는 'gold_sql'과 'predicted_sql' 컬럼을 가지고 있어야 함)
 """
+# https://github.com/taoyds/test-suite-sql-eval
 def evaluate_execution_accuracy(db_path: str, predicted_sql: str, gold_sql: str) -> bool:
     """
     예측된 SQL과 정답 SQL을 실제 DB에서 실행하고, 결과 셋이 동일한지 검증합니다.

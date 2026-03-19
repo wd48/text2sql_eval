@@ -2,7 +2,7 @@ import json
 import csv
 import sqlite3
 
-SPIDER_PATH = "spider"  # Spider 압축 해제 경로
+SPIDER_PATH = "spider_data"  # Spider 압축 해제 경로
 
 with open(f"{SPIDER_PATH}/dev.json", encoding="utf-8") as f:
     data = json.load(f)
