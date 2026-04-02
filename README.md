@@ -1,47 +1,27 @@
 # sql-eval 기반 Text-to-SQL 고도화 파이프라인 구축 (DIN-SQL & MMSQL 적용)
 
----
 
-## 🆕 최근 업데이트 (2026.03.31)
+## 목차
 
-### ✅ 파이프라인 완성: eval.py 통합 + CSV 포맷 통일 완료
+- [1. 프로젝트 개요](#1-프로젝트-개요-overview)
+- [2. 빠른 시작](#2-빠른-시작-quick-start)
+- [3. 핵심 설계 원칙](#3-핵심-설계-원칙-core-design-principles)
+- [4. 파이프라인 구조적 흐름](#4-파이프라인-구조적-흐름-pipeline-architecture-flow)
+- [5. 디렉토리 및 모듈 구조](#5-디렉토리-및-모듈-구조-directory--module-structure)
+- [6. 구현된 기능 상세](#6-구현된-기능-상세-implemented-features-detaillink)
+- [7. Spider 벤치마크 데이터셋](#7-spider-벤치마크-데이터셋-spider-benchmark-dataset)
+- [8. 다음 단계](#8-다음-단계-next-steps)
+- [9. Reference Links](#9-reference-links)
+- [10. 최근 변경사항](#10-최근-변경사항-recent-changes)
 
-**주요 완성 사항:**
+### 📚 상세 문서 바로가기
 
-| 항목 | 상태 | 설명 |
-|------|------|------|
-| **eval.py 통합** | ✅ 완료 | main.py에서 SQL 생성 후 자동 평가 (동적 DB 경로) |
-| **CSV 포맷 통일** | ✅ 완료 | make_csv.py ↔ main.py 완벽 호환 (db_name, db_type 추가) |
-| **실제 스키마 추출** | ✅ 완료 | SQLite PRAGMA table_info로 실제 DB 스키마 자동 추출 |
-| **통합 검증** | ✅ 완료 | test_pipeline.py 모든 검증 통과 |
-
----
-
-### 📚 상세 문서 (반드시 읽어보세요!)
-
-#### 🔗 **[PIPELINE_GUIDE.md](md/PIPELINE_GUIDE.md)** - 파이프라인 완전 가이드
-- 전체 파이프라인 아키텍처 다이어그램
-- 각 파일의 역할 상세 설명
-- End-to-End 실행 예제
-- CSV 컬럼 명세서
-- 문제 해결 가이드
-
-#### 🔗 **[COMPLETION_REPORT.md](md/COMPLETION_REPORT.md)** - 최종 완성 보고서
-- 3가지 핵심 요청사항 상세 설명
-- Before/After 비교
-- 통합 검증 결과
-- 실행 순서 및 예상 출력
-- 다음 단계 추천사항
-
-#### 🔗 **[test_pipeline.py](test_pipeline.py)** - 통합 검증 테스트
-```bash
-python test_pipeline.py
-```
-- CSV 포맷 검증
-- load_questions 호환성 확인
-- eval.py 모듈 로드 검증
-- Spider DB 경로 확인
-- LangChain 임포트 검증
+- [PIPELINE_GUIDE.md](md/PIPELINE_GUIDE.md) - 파이프라인 완전 가이드
+- [COMPLETION_REPORT.md](md/COMPLETION_REPORT.md) - 최종 완성 보고서
+- [README_5_Details.md](md/README_5_Details.md) - 구현된 기능 상세 설명
+- [GPU_SETUP.md](md/GPU_SETUP.md) - GPU 사용 설정 가이드
+- [checkGPU.md](md/checkGPU.md) - GPU 상태 점검 방법
+- [test-suite-sql-eval_SETUP_GUIDE.md](md/test-suite-sql-eval_SETUP_GUIDE.md) - 평가 엔진 설치 가이드
 
 ---
 
@@ -258,250 +238,7 @@ text2sql_eval/
 
 ---
 
-## 5. 구현된 기능 상세 (Implemented Features Detail)
-
-### 5.1 Command-Line Interface (CLI) - `main.py`
-
-```bash
-python main.py -m <MODEL> -q <QUESTIONS_FILE>
-```
-
-**주요 인자:**
-- `-m/--model`: 사용할 모델 선택
-  - `llama3-langchain`: Ollama llama3 모델 사용 (프로덕션용)
-  - `gpt-4`: OpenAI GPT-4 (향후 구현)
-- `-q/--questions_file`: 입력 질문 CSV 파일 경로
-
-**구현 특징:**
-- **Factory 패턴:** 모델별 Runner를 동적으로 선택하여 확장성 극대화
-- **온디맨드 임포트:** 선택된 모델의 의존성만 로드 (Python 3.14 경고 최소화)
-
-### 5.2 4단계 파이프라인 (Phase 1~4) - `langchain_runner.py`
-
-#### Phase 1: Question Classification
-```json
-{
-  "phase_1_classification": "You are a database expert. Classify if the following question can be answered using the provided database schema.\nSchema: {schema}\nQuestion: {question}\nRespond strictly with one of these words: [Answerable, Ambiguous, Unanswerable]."
-}
-```
-- **목적:** 불가능한 질문의 조기 감지로 불필요한 연산 차단
-- **최적화:** "Answerable"이 아니면 파이프라인 즉시 종료
-
-#### Phase 2: Schema Linking
-```json
-{
-  "phase_2_schema_linking": "Given the following database schema, extract ONLY the tables and columns necessary to answer the user's question.\nSchema: {schema}\nQuestion: {question}\nOutput the linked schema in JSON format."
-}
-```
-- **목적:** 거대한 스키마를 질문에 맞는 부분만 축소
-- **효과:** 컨텍스트 윈도우 절감, 추론 정확도 향상
-
-#### Phase 3: Draft Generation
-```json
-{
-  "phase_3_draft_generation": "Write a valid SQLite query to answer the question based on the provided linked schema.\nLinked Schema: {linked_schema}\nQuestion: {question}\nOutput ONLY the SQL query."
-}
-```
-- **입력:** 축소된 스키마 사용으로 빠른 생성
-- **출력:** 1차 SQL 쿼리 (여러 문제 가능성 있음)
-
-#### Phase 4: Self-Correction
-```json
-{
-  "phase_4_self_correction": "Review the following SQLite query for the given question.\n- Ensure all tables and columns exist in the schema.\n- Check if JOIN conditions (Foreign Keys) are correct.\n- Ensure GROUP BY matches the SELECT clause.\nQuestion: {question}\nDraft SQL: {draft_sql}\nSchema: {schema}\nOutput the corrected SQL query ONLY."
-}
-```
-- **목적:** 초안의 문법/논리 오류 교정
-- **효과:** 단순 생성보다 높은 정확도
-
-### 5.3 SQL 실행 정확도 평가 - `eval/eval.py`
-
-#### `evaluate_execution_accuracy(db_path, predicted_sql, gold_sql)`
-```python
-def evaluate_execution_accuracy(db_path: str, predicted_sql: str, gold_sql: str) -> bool:
-    """
-    예측된 SQL과 정답 SQL을 실제 DB에서 실행하고, 결과 셋이 동일한지 검증합니다.
-    """
-```
-
-**특징:**
-- **실제 DB 실행:** SQLite 연결 후 두 쿼리 모두 실행
-- **결과 셋 비교:** Set으로 변환하여 순서 무관 비교
-- **오류 처리:** SQL 문법 오류, 존재하지 않는 테이블/컬럼 → False 반환
-
-#### `run_evaluation_suite(results_df, db_path)`
-```python
-def run_evaluation_suite(results_df: pd.DataFrame, db_path: str) -> dict:
-    """
-    전체 결과 데이터프레임을 순회하며 정확도를 계산합니다.
-    """
-```
-
-**입력 요구사항:**
-- `results_df`: 'gold_sql'과 'predicted_sql' 컬럼 포함
-- `db_path`: SQLite DB 경로
-
-**출력:**
-- 정확도, 오류율, 통계 정보를 포함한 dict
-
-### 5.4 LLM 관리 유틸리티 - `utils/llm.py`
-
-#### `OllamaLLMManager` 클래스
-```python
-class OllamaLLMManager:
-    def __init__(self, model_name: str = "llama3", temperature: float = 0.0):
-        # temperature=0.0: SQL 생성 같은 결정론적 작업에 최적화
-    
-    def get_chain(self, prompt_template_str: str):
-        # 프롬프트 | LLM | 파서 체인 생성
-    
-    def invoke(self, prompt_template_str: str, **kwargs) -> str:
-        # 단발성 LLM 호출 (프롬프트 + 변수 → 결과)
-```
-
-**사용 예:**
-```python
-from utils.llm import OllamaLLMManager
-
-manager = OllamaLLMManager(model_name="gemma3n")
-result = manager.invoke("Classify: {text}", text="좋은 리뷰입니다")
-```
-
-### 5.5 Ollama 모델 지원
-
-**현재 테스트된 모델:**
-- `gemma3n` (7.5GB, 경량, 빠름, 한국어 미흡)
-- `llama3` (미설치, 약 4.5GB)
-
-**설치 명령:**
-```powershell
-ollama pull gemma3n    # 설치됨
-ollama pull llama3     # 선택사항
-ollama list            # 설치된 모델 확인
-```
-
-**모델 성능 비교:**
-| 모델 | 크기 | 속도 | 정확도 | 한국어 | 추천 용도 |
-|------|------|------|-------|--------|----------|
-| gemma3n | 7.5GB | 빠름 | 중간 | 약함 | 빠른 프로토타입 |
-| llama3 | 4.5GB | 중간 | 높음 | 중간 | 정확도 우선 |
-
-### 5.6 GPU 활성화 설정 (CUDA/ROCm)
-
-본 시스템은 **GPU 가속**을 기본으로 지원합니다. Ollama가 설치되어 있고 CUDA/ROCm이 설치된 환경에서는 자동으로 GPU를 감지하여 사용합니다.
-
-#### GPU 활성화 확인
-
-**현재 상태 확인:**
-```powershell
-# Ollama가 GPU를 사용하고 있는지 확인
-$env:OLLAMA_NUM_GPU
-$env:OLLAMA_GPU_MEMORY
-
-# 또는 ollama 실행 시 로그 확인
-ollama run gemma3n "test"
-```
-
-#### GPU 환경변수 설정 (명시적 활성화)
-
-**Windows 환경 (PowerShell에서 영구 설정):**
-```powershell
-# 현재 세션에만 적용
-$env:OLLAMA_NUM_GPU = "-1"
-
-# 또는 시스템 전체에 적용 (관리자 권한)
-[Environment]::SetEnvironmentVariable("OLLAMA_NUM_GPU", "-1", "Machine")
-```
-
-**환경변수 설명:**
-- `OLLAMA_NUM_GPU=-1`: 모든 모델 레이어를 GPU 메모리에 로드 (권장, 최고 성능)
-- `OLLAMA_NUM_GPU=0`: GPU 사용 안 함 (CPU 전용)
-- `OLLAMA_NUM_GPU=N`: N개의 레이어만 GPU에 로드 (메모리 부족 시)
-- `OLLAMA_GPU_MEMORY=Xgi`: GPU 메모리 한계 설정 (예: 4gi = 4GB)
-
-#### GPU 확인 및 벤치마크
-
-**현재 GPU 사용 상태 확인:**
-```python
-import os
-import subprocess
-
-# 환경변수 확인
-print(f"OLLAMA_NUM_GPU: {os.environ.get('OLLAMA_NUM_GPU', 'not set')}")
-print(f"OLLAMA_GPU_MEMORY: {os.environ.get('OLLAMA_GPU_MEMORY', 'not set')}")
-
-# Ollama 프로세스 정보 (Windows)
-result = subprocess.run(
-    ["tasklist", "/v"],
-    capture_output=True,
-    text=True
-)
-for line in result.stdout.split('\n'):
-    if 'ollama' in line.lower():
-        print(f"Ollama Process: {line}")
-```
-
-**성능 비교 (추정값, 환경에 따라 다름):**
-| 설정 | gemma3n 속도 | llama3 속도 | GPU 메모리 |
-|------|-------------|-----------|----------|
-| GPU (OLLAMA_NUM_GPU=-1) | ~1초/토큰 | ~0.5초/토큰 | ~6GB+ |
-| GPU (부분로드) | ~2초/토큰 | ~1초/토큰 | ~3~4GB |
-| CPU (GPU 미사용) | ~5~10초/토큰 | ~10~20초/토큰 | ~500MB |
-
-#### CUDA/ROCm 설치 여부 확인
-
-**CUDA 설치 확인 (NVIDIA GPU):**
-```powershell
-# NVIDIA GPU 정보
-nvidia-smi
-
-# CUDA 버전 확인
-nvcc --version
-```
-
-**ROCm 설치 확인 (AMD GPU):**
-```powershell
-# AMD GPU 정보
-rocm-smi
-
-# ROCm 버전 확인
-hipcc --version
-```
-
-#### GPU 진단 도구 사용 (신규)
-
-본 프로젝트에 포함된 **`check_gpu.py`** 스크립트로 GPU 설정 상태를 즉시 진단할 수 있습니다.
-
-```powershell
-Set-Location "E:\study\python\text2sql_eval"
-.\.venv\Scripts\python.exe check_gpu.py
-```
-
-**출력 예시:**
-```
-============================================================
-  1. Ollama 환경변수 설정
-============================================================
-✓ OLLAMA_NUM_GPU       = -1                    (모든 레이어를 GPU에 로드)
-✗ OLLAMA_GPU_MEMORY    = 미설정                 (GPU 메모리 한계)
-
-============================================================
-  2. CUDA 설치 확인 (NVIDIA GPU)
-============================================================
-✗ nvidia-smi를 찾을 수 없습니다. (CUDA 미설치)
-
-============================================================
-  4. Ollama 서버 상태
-============================================================
-✓ Ollama 서버 정상 작동 중
-```
-
-**진단 항목:**
-- ✓ Ollama 환경변수 설정 상태
-- ✓ CUDA (NVIDIA GPU) 설치 여부
-- ✓ ROCm (AMD GPU) 설치 여부
-- ✓ Ollama 서버 정상 작동 여부
-- ✓ 필요한 Python 라이브러리 설치 여부
+## 5. [구현된 기능 상세 Implemented Features Detail(link)](md/README_5_Details.md)
 
 ---
 
@@ -712,221 +449,25 @@ for q in sample_questions:
 
 ---
 
-## 📝 최근 변경사항 (Recent Changes - 2026.03.31)
+## 📝 최근 변경사항 (Recent Changes)
 
-### 🔧 수정된 파일 (Modified Files)
+### ✅ 파이프라인 완성: eval.py 통합 + CSV 포맷 통일 완료 (2026.03.31)
+**주요 완성 사항:**
 
-#### 1️⃣ **main.py** - 파이프라인 완전 개선
-**변경 사항:**
-- ✅ CSV 포맷 통일 (`question`, `schema`, `gold_sql`, `db_name`, `db_type`)
-- ✅ **eval.py 완벽 통합** (동적 DB 경로 사용)
-  ```python
-  # 각 질문의 db_name으로부터 동적으로 DB 파일 경로 결정
-  db_file = SPIDER_DB_PATH / db_name / f"{db_name}.sqlite"
-  is_correct = evaluate_execution_accuracy(db_file, predicted_sql, gold_sql)
-  ```
-- ✅ 상세한 평가 결과 출력 (정확도 %, 정답 수, 개별 결과)
-- ✅ GPU 설정 자동 확인 (`OLLAMA_NUM_GPU=-1`)
-- ✅ 강화된 에러 처리 (DB 파일 없음, SQL 오류 등)
-- ✅ `--no-eval` 옵션 추가 (평가 단계 스킵 가능)
-
-**주요 기능:**
-```powershell
-# 기본 실행 (SQL 생성 + 평가)
-python main.py -m llama3-langchain -q questions.csv
-
-# 평가 없이 SQL 생성만
-python main.py -m llama3-langchain -q questions.csv --no-eval
-
-# 커스텀 출력 경로
-python main.py -m llama3-langchain -q questions.csv -o my_results.json
-```
-
----
-
-#### 2️⃣ **make_csv.py** - 데이터셋 포맷 개선
-**변경 사항:**
-- ✅ `db_name`, `db_type` 컬럼 추가 (평가 시 DB 파일 경로 결정에 필수)
-- ✅ **실제 DB에서 스키마 추출** (SQLite PRAGMA table_info 사용)
-  ```python
-  # 각 테이블의 컬럼 정보 + 데이터타입 자동 추출
-  cols = conn.execute(f"PRAGMA table_info({tname})").fetchall()
-  col_info = [f"{c[1]}({c[2]})" for c in cols]  # 컬럼명(타입)
-  schema_parts.append(f"Table: {tname}, Columns: [{', '.join(col_info)}]")
-  ```
-- ✅ .sqlite 파일 경로 통일 (이전의 .db → .sqlite)
-- ✅ 에러 처리 및 진행 상황 표시 개선
-- ✅ Path 클래스 사용으로 경로 관리 개선
-
-**생성 결과 예시:**
-```csv
-question,schema,gold_sql,db_name,db_type
-"How many singers do we have?","Table: concert, Columns: [concert_ID(INTEGER), name(TEXT)] | Table: singer, Columns: [Singer_ID(INTEGER), Name(TEXT)]","SELECT count(*) FROM singer",concert_singer,sqlite
-```
-
----
-
-### ✨ 신규 생성된 문서 (New Documents)
-
-#### 📗 **[PIPELINE_GUIDE.md](PIPELINE_GUIDE.md)** (완전 가이드 - 70+ 줄)
-- 전체 파이프라인 아키텍처 (다이어그램 포함)
-- Spider 데이터셋 구조 설명
-- 각 파일의 역할 및 기능 설명
-  - make_csv.py: 데이터셋 변환
-  - main.py: 메인 파이프라인
-  - eval.py: 평가 엔진
-  - langchain_runner.py: LLM 파이프라인
-- CSV 컬럼 명세 (상세 테이블)
-- End-to-End 실행 흐름 (4단계)
-- 문제 해결 가이드 (Q&A 형식)
-
-**읽어야 할 사람:** 시스템 전체 구조를 이해하고 싶은 사람
-
----
-
-#### 📕 **[COMPLETION_REPORT.md](COMPLETION_REPORT.md)** (최종 완성 보고서 - 200+ 줄)
-- 3가지 핵심 요청사항 상세 설명
-  - ① eval.py를 main.py에 연결 (동적 DB 경로 사용)
-  - ② make_csv.py와 main.py의 CSV 포맷 통일
-  - ③ questions.csv schema 컬럼을 실제 스키마로 채우기
-- Before/After 코드 비교
-- 통합 검증 결과 (5가지 테스트 모두 통과)
-- 최종 파일 구조 및 역할
-- 완전한 실행 순서 (4단계)
-- 예상 출력 및 결과 JSON 포맷
-- CSV 컬럼 명세 (최종)
-- 다음 단계 추천사항
-
-**읽어야 할 사람:** 수정사항과 개선 내용을 자세히 알고 싶은 사람
-
----
-
-#### 🧪 **[test_pipeline.py](test_pipeline.py)** (통합 검증 테스트)
-자동화된 검증 스크립트 - 5가지 검증 수행:
-1. CSV 포맷 검증 (필수 컬럼 확인)
-2. main.py load_questions 호환성 (실제 데이터 로드 테스트)
-3. eval.py 모듈 로드 검증 (함수 import 확인)
-4. Spider DB 파일 경로 검증 (파일 존재 확인)
-5. LangChain 모듈 검증 (LangChainOllamaRunner import 확인)
-
-**실행 방법:**
-```powershell
-python test_pipeline.py
-```
-
-**예상 출력:**
-```
-✅ 테스트 1: CSV 포맷 검증 ✓
-✅ 테스트 2: main.py load_questions 호환성 ✓
-✅ 테스트 3: eval.py 임포트 검증 ✓
-✅ 테스트 4: Spider DB 파일 경로 확인 ✓
-✅ 테스트 5: LangChain 모듈 검증 ✓
-
-🎉 모든 검증 통과!
-```
-
----
-
-### 📊 주요 개선 사항 요약
-
-| 항목 | 이전 | 이후 |
+| 항목 | 상태 | 설명 |
 |------|------|------|
-| **eval.py 통합** | ❌ DB 경로 하드코딩, 실제 폴더 없음 | ✅ 동적 DB 경로, 개별 평가, 최종 통계 |
-| **CSV 포맷** | ❌ make_csv.py와 main.py 불일치 | ✅ 완벽히 통일 (5개 컬럼) |
-| **스키마 정보** | ❌ 비어있거나 불완전 | ✅ SQLite에서 실제 추출 (테이블, 컬럼, 타입) |
-| **DB 파일 경로** | ❌ `./spider_data/database/...` (존재 안 함) | ✅ `./spider/database/{db_name}/{db_name}.sqlite` |
-| **평가 결과** | ❌ 수동 계산 필요 | ✅ 자동 계산 (정확도 %, 정답 수) |
-| **End-to-End 실행** | ❌ 불가능 | ✅ 완벽히 동작 |
+| **eval.py 통합** | ✅ 완료 | main.py에서 SQL 생성 후 자동 평가 (동적 DB 경로) |
+| **CSV 포맷 통일** | ✅ 완료 | make_csv.py ↔ main.py 완벽 호환 (db_name, db_type 추가) |
+| **실제 스키마 추출** | ✅ 완료 | SQLite PRAGMA table_info로 실제 DB 스키마 자동 추출 |
+| **통합 검증** | ✅ 완료 | test_pipeline.py 모든 검증 통과 |
 
----
+### 🧪 test-suite-sql-eval 통합 요약 (2026.04.02)
+**주요 연동 사항:**
 
-### 🎯 검증 결과
-
-**test_pipeline.py 실행 완료 - 모든 검증 통과! ✅**
-
-```
-🔍 Text-to-SQL 파이프라인 통합 검증
-======================================================================
-
-✅ 테스트 1: CSV 포맷 검증
-   ✓ 필수 컬럼: {'gold_sql', 'question', 'schema', 'db_type', 'db_name'}
-   ✓ 데이터 행 개수: 20
-
-✅ 테스트 2: main.py load_questions 호환성
-   ✓ 20개 질문 로드 성공
-
-✅ 테스트 3: eval.py 임포트 검증
-   ✓ evaluate_execution_accuracy() 함수 available
-
-✅ 테스트 4: Spider DB 파일 경로 확인
-   ✓ DB 파일 존재! (크기: 0.04 MB)
-
-✅ 테스트 5: LangChain 모듈 검증
-   ✓ LangChainOllamaRunner 클래스 임포트 성공
-
-🎉 모든 검증 통과!
-```
-
----
-
-### 📂 최종 프로젝트 구조
-
-```
-text2sql_eval/
-├── main.py                      ← ✅ 수정: eval.py 통합, CSV 포맷 통일
-├── make_csv.py                  ← ✅ 수정: db_name/db_type 추가, 실제 스키마 추출
-├── questions.csv                ← ✨ 신규: 20개 질문 (모든 컬럼 포함)
-│
-├── 📚 **신규 문서들:**
-├── PIPELINE_GUIDE.md            ← 📗 파이프라인 완전 가이드
-├── COMPLETION_REPORT.md         ← 📕 최종 완성 보고서
-├── test_pipeline.py             ← 🧪 통합 검증 테스트
-│
-├── eval/
-│   └── eval.py                  ← 평가 엔진 (변경 없음)
-│
-├── runners/
-│   ├── langchain_runner.py      ← LangChain 기반 SQL 생성
-│   └── api_runner.py
-│
-├── spider/
-│   ├── database/
-│   │   ├── concert_singer/
-│   │   │   └── concert_singer.sqlite
-│   │   └── ...
-│   ├── dev.json
-│   └── ...
-│
-└── README.md                    ← ✅ 수정: 최근 업데이트 섹션 추가
-```
-
----
-
-### 🚀 다음 실행 명령
-
-```powershell
-# 1. 통합 검증 (선택사항)
-python test_pipeline.py
-
-# 2. 데이터셋 생성
-python make_csv.py
-
-# 3. SQL 생성 + 자동 평가 (메인)
-python main.py -m llama3-langchain -q questions.csv
-
-# 결과 확인
-cat results.json | python -m json.tool
-```
-
----
-
-## ✅ 최종 체크리스트
-
-- [x] ① eval.py를 main.py 파이프라인에 연결
-- [x] ② make_csv.py와 main.py의 CSV 컬럼 포맷 통일
-- [x] ③ questions.csv schema 컬럼을 실제 DB 스키마로 채우기
-- [x] ④ 전체 파이프라인 통합 검증 완료
-- [x] ⑤ 상세 문서화 (PIPELINE_GUIDE.md, COMPLETION_REPORT.md)
-- [x] ⑥ 자동화된 검증 테스트 (test_pipeline.py)
-
-**모든 작업 완료!** 🎉
+| 항목 | 상태 | 설명 |
+|------|------|------|
+| **test-suite-sql-eval 배치** | ✅ 완료 | `eval/test-suite-sql-eval` 경로에 평가 엔진 통합 |
+| **평가 입력 포맷** | ✅ 정리 | `gold.txt`는 `정답SQL\tdb_id`, `predict.txt`는 예측 SQL 한 줄 형식 |
+| **평가 방식** | ✅ 지원 | `evaluation.py` 기반 `exec` 중심 평가, 필요 시 `match`/`all` 확장 가능 |
+| **DB 리소스** | ✅ 분리 | Spider Test Suite DB는 용량상 로컬 별도 다운로드 후 `database/`에 배치 |
+| **상세 가이드** | ✅ 문서화 | 설치/실행 절차는 `md/test-suite-sql-eval_SETUP_GUIDE.md` 참고 |
