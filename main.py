@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 # GPU 활성화: Ollama가 GPU를 사용하도록 설정
@@ -47,6 +48,25 @@ def save_result(results: list, output_path: str = "results.json"):
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
     print(f"✓ 결과 저장 완료 → {output_path}")
+
+
+# 2026-04-07 SQL 생성 루프 종료 직후 통계 출력 호출 추가
+def print_classification_stats(results: list):
+    """classification_label 기준 통계와 Unanswerable 비율 출력"""
+    total = len(results)
+    labels = [r.get("classification_label", "Unknown") or "Unknown" for r in results]
+    counts = Counter(labels)
+    unanswerable_count = counts.get("Unanswerable", 0)
+    unanswerable_ratio = (unanswerable_count / total * 100) if total > 0 else 0.0
+
+    print(f"\n{'='*60}")
+    print("📊 분류 라벨 통계:")
+    print(f"   전체 질문: {total}")
+    for label in ("Answerable", "Ambiguous", "Unanswerable", "Unknown"):
+        if label in counts:
+            print(f"   {label}: {counts[label]}")
+    print(f"   Unanswerable 비율: {unanswerable_ratio:.2f}%")
+    print(f"{'='*60}\n")
 
 
 def main():
@@ -117,6 +137,8 @@ def main():
             "draft_sql": generation.get("draft_sql", "")
         })
         print(f"  → [{generation.get('classification_label', 'Unknown')}] {predicted_sql[:80]}...\n")
+
+    print_classification_stats(results)
 
     # 평가 단계 (선택사항)
     if not args.no_eval:

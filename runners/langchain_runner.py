@@ -1,6 +1,7 @@
 # LangChain + Ollama pipeline runner
 import json
 import os
+import re
 
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import PromptTemplate
@@ -39,11 +40,28 @@ class LangChainOllamaRunner:
     def _normalize_classification(self, classification_result: str) -> str:
         """모델 응답에서 분류 라벨만 안정적으로 추출합니다."""
         text = (classification_result or "").strip()
-        for label in ("Answerable", "Ambiguous", "Unanswerable"):
-            if label.lower() in text.lower():
-                return label
-        first_token = text.split()[0] if text else ""
-        return first_token.strip(",.:;()[]{}") or "Unknown"
+        lowered = text.lower()
+
+        # Unanswerable을 먼저 판정해야 "answerable" 부분 문자열 오인식을 막을 수 있다.
+        if re.search(r"\bun+answerable\b", lowered) or "unaanswerable" in lowered:
+            return "Unanswerable"
+        if re.search(r"\bambiguous\b", lowered):
+            return "Ambiguous"
+        if re.search(r"\banswerable\b", lowered):
+            return "Answerable"
+        return "Unknown"
+
+    def _clean_generated_sql(self, text: str) -> str:
+        """LLM 출력에서 코드펜스/언어태그를 제거해 순수 SQL만 반환합니다."""
+        cleaned = (text or "").strip()
+
+        # ```sql / ```sqlite / ``` 및 변형(백틱 개수 1~3) 제거
+        cleaned = re.sub(r"^\s*`{1,3}\s*[a-zA-Z0-9_-]*\s*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?\s*`{1,3}\s*$", "", cleaned)
+
+        # 혹시 언어태그 조각이 앞에 남는 경우를 방지
+        cleaned = re.sub(r"^(sql|sqlite)\s*", "", cleaned, flags=re.IGNORECASE)
+        return cleaned.strip()
 
     def generate_sql(self, question: str, schema: str, return_metadata: bool = False):
         """4 Phase 파이프라인을 순차적으로 실행하여 최종 SQL을 생성합니다."""
@@ -78,7 +96,7 @@ class LangChainOllamaRunner:
         })
 
         # 쿼리 외의 불필요한 텍스트 제거 (후처리)
-        final_sql = final_sql.replace("```sql", "").replace("```", "").strip()
+        final_sql = self._clean_generated_sql(final_sql)
         if return_metadata:
             return {
                 "question": question,

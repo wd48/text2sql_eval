@@ -5,6 +5,7 @@
 
 - [1. 프로젝트 개요](#1-프로젝트-개요-overview)
 - [2. 빠른 시작](#2-빠른-시작-quick-start)
+- [2-1. 결과 JSON 디버깅 컬럼](#2-1-결과-json-디버깅-컬럼)
 - [3. 핵심 설계 원칙](#3-핵심-설계-원칙-core-design-principles)
 - [4. 파이프라인 구조적 흐름](#4-파이프라인-구조적-흐름-pipeline-architecture-flow)
 - [5. 디렉토리 및 모듈 구조](#5-디렉토리-및-모듈-구조-directory--module-structure)
@@ -103,6 +104,20 @@ WHERE department = '영업팀'
 ORDER BY salary DESC
 LIMIT 1;
 ```
+
+### 2-1. 결과 JSON 디버깅 컬럼
+
+`main.py` 실행 후 생성되는 `results.json`에는 최종 SQL뿐 아니라 중간 단계 디버깅 정보도 함께 저장됩니다.
+
+| 컬럼 | 설명 |
+|------|------|
+| `classification_result` | Phase 1 분류 단계의 원본 응답 텍스트 |
+| `classification_label` | 정규화된 분류 라벨 (`Answerable`, `Ambiguous`, `Unanswerable`, `Unknown`) |
+| `linked_schema` | Phase 2에서 추출한 축소 스키마 |
+| `draft_sql` | Phase 3에서 생성한 초안 SQL |
+| `predicted_sql` | Phase 4 보정 후 최종 SQL |
+
+또한 콘솔에는 `classification_label` 분포와 `Unanswerable` 비율이 통계로 출력되어 프롬프트/스키마 품질을 빠르게 진단할 수 있습니다.
 
 ---
 
