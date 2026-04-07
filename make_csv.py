@@ -1,6 +1,7 @@
 import json
 import csv
 import sqlite3
+from pathlib import Path
 # Spider 데이터셋 경로 설정
 SPIDER_PATH = Path(__file__).parent / "spider"
 

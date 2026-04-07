@@ -32,17 +32,31 @@ class LangChainOllamaRunner:
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
 
-    def generate_sql(self, question: str, schema: str) -> str:
+    # 2026-04-07 옵션 추가
+    # return_metadata=True 옵션이 활성화된 경우, 각 단계의 중간 결과와 분류 라벨을 포함한 상세 정보를 반환합니다.
+    # classification_result, classification_label
+    # linked_schema, draft_sql, predicted_sql
+    def _normalize_classification(self, classification_result: str) -> str:
+        """모델 응답에서 분류 라벨만 안정적으로 추출합니다."""
+        text = (classification_result or "").strip()
+        for label in ("Answerable", "Ambiguous", "Unanswerable"):
+            if label.lower() in text.lower():
+                return label
+        first_token = text.split()[0] if text else ""
+        return first_token.strip(",.:;()[]{}") or "Unknown"
+
+    def generate_sql(self, question: str, schema: str, return_metadata: bool = False):
         """4 Phase 파이프라인을 순차적으로 실행하여 최종 SQL을 생성합니다."""
 
         # Phase 1: Question Classification (질문 검증)
         prompt_p1 = PromptTemplate.from_template(self.prompts["phase_1_classification"])
         chain_1 = prompt_p1 | self.llm | self.output_parser
         classification_result = chain_1.invoke({"question": question, "schema": schema}).strip()
+        classification_label = self._normalize_classification(classification_result)
 
-        # 답변 불가 상태면 파이프라인 즉시 종료 (연산 낭비 방지)
-        if "Answerable" not in classification_result:
-            return f"-- 시스템 알림: 해당 질문은 현재 스키마로 답변할 수 없습니다. ({classification_result})"
+        # 분류 결과는 참고용으로만 사용하고, 답변 불가/모호 판정이어도
+        # SQL 생성 파이프라인은 계속 진행한다.
+        # 이렇게 해야 "시스템 알림" 문자열이 결과로 반환되는 것을 방지할 수 있다.
 
         # Phase 2: Schema Linking (필요한 Table/Column 추출)
         prompt_p2 = PromptTemplate.from_template(self.prompts["phase_2_schema_linking"])
@@ -65,6 +79,16 @@ class LangChainOllamaRunner:
 
         # 쿼리 외의 불필요한 텍스트 제거 (후처리)
         final_sql = final_sql.replace("```sql", "").replace("```", "").strip()
+        if return_metadata:
+            return {
+                "question": question,
+                "schema": schema,
+                "classification_result": classification_result,
+                "classification_label": classification_label,
+                "linked_schema": linked_schema,
+                "draft_sql": draft_sql,
+                "predicted_sql": final_sql,
+            }
         return final_sql
 
 

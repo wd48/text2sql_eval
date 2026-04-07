@@ -11,6 +11,11 @@ if not os.environ.get('OLLAMA_NUM_GPU'):
 
 from runners.langchain_runner import LangChainOllamaRunner
 
+try:
+    from eval.eval import evaluate_execution_accuracy
+except ImportError:
+    evaluate_execution_accuracy = None
+
 # 프로젝트 루트 경로 설정 (spider 데이터셋 위치)
 PROJECT_ROOT = Path(__file__).parent
 SPIDER_DB_PATH = PROJECT_ROOT / "spider" / "database"
@@ -75,7 +80,7 @@ def main():
             print("   해결방법:")
             print("   1. Ollama 설치: https://ollama.ai")
             print("   2. 모델 다운로드: ollama pull gemma3n:latest")
-            sys.exit(1)
+            raise SystemExit(1)
     else:
         raise ValueError(f"지원하지 않는 모델: {args.model}")
 
@@ -96,7 +101,8 @@ def main():
         if not schema and q.get("db_name"):
             schema = f"Database: {q.get('db_name')} ({q.get('db_type', 'sqlite')})"
 
-        predicted_sql = runner.generate_sql(q["question"], schema)
+        generation = runner.generate_sql(q["question"], schema, return_metadata=True)
+        predicted_sql = generation["predicted_sql"]
         
         results.append({
             "question":      q["question"],
@@ -104,16 +110,21 @@ def main():
             "db_name":       q.get("db_name", ""),
             "predicted_sql": predicted_sql,
             "gold_sql":      q.get("gold_sql", ""),
-            "db_type":       q.get("db_type", "sqlite")
+            "db_type":       q.get("db_type", "sqlite"),
+            "classification_result": generation.get("classification_result", ""),
+            "classification_label": generation.get("classification_label", "Unknown"),
+            "linked_schema": generation.get("linked_schema", ""),
+            "draft_sql": generation.get("draft_sql", "")
         })
-        print(f"  → {predicted_sql[:80]}...\n")
+        print(f"  → [{generation.get('classification_label', 'Unknown')}] {predicted_sql[:80]}...\n")
 
     # 평가 단계 (선택사항)
     if not args.no_eval:
         print("\n📊 평가 단계 시작...\n")
         try:
-            from eval.eval import evaluate_execution_accuracy
-            
+            if evaluate_execution_accuracy is None:
+                raise ImportError("eval.py를 임포트할 수 없습니다.")
+
             correct_count = 0
             
             for idx, result in enumerate(results):
