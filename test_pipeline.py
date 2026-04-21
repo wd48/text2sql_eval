@@ -7,8 +7,6 @@
 """
 
 import csv
-import json
-import os
 import sys
 from pathlib import Path
 
@@ -164,6 +162,65 @@ except ImportError as e:
 print()
 
 # ============================================================
+# 테스트 6: test-suite-sql-eval 자산/아티팩트 검증
+# ============================================================
+print("✅ 테스트 6: test-suite-sql-eval 자산 검증")
+print("-" * 70)
+
+testsuite_root = PROJECT_ROOT / "eval" / "test-suite-sql-eval"
+testsuite_db_root = testsuite_root / "database"
+testsuite_eval_py = testsuite_root / "evaluation.py"
+testsuite_table = testsuite_root / "tables.json"
+testsuite_gold = PROJECT_ROOT / "artifacts" / "testsuite_gold.txt"
+testsuite_pred = PROJECT_ROOT / "artifacts" / "testsuite_pred.txt"
+
+testsuite_ok = True
+
+if testsuite_eval_py.exists():
+    print(f"   ✓ evaluation.py 존재: {testsuite_eval_py}")
+else:
+    print(f"   ✗ evaluation.py 없음: {testsuite_eval_py}")
+    testsuite_ok = False
+
+if testsuite_table.exists():
+    print(f"   ✓ tables.json 존재: {testsuite_table}")
+else:
+    print(f"   ✗ tables.json 없음: {testsuite_table}")
+    testsuite_ok = False
+
+if testsuite_db_root.exists() and any(testsuite_db_root.iterdir()):
+    print(f"   ✓ database 디렉터리 존재: {testsuite_db_root}")
+else:
+    print(f"   ✗ database 디렉터리 없음 또는 비어 있음: {testsuite_db_root}")
+    testsuite_ok = False
+
+if testsuite_gold.exists() and testsuite_pred.exists():
+    with open(testsuite_gold, "r", encoding="utf-8") as fg, open(testsuite_pred, "r", encoding="utf-8") as fp:
+        gold_lines = fg.readlines()
+        pred_lines = fp.readlines()
+
+    print(f"   ✓ gold/pred 파일 존재: {testsuite_gold.name}, {testsuite_pred.name}")
+    print(f"   gold 라인 수: {len(gold_lines)}")
+    print(f"   pred 라인 수: {len(pred_lines)}")
+
+    if len(gold_lines) != len(pred_lines):
+        print("   ✗ gold/pred 라인 수 불일치")
+        testsuite_ok = False
+    elif len(gold_lines) > 0:
+        first_gold = gold_lines[0].rstrip("\n")
+        if "\t" not in first_gold:
+            print("   ✗ gold 파일 포맷 오류: db_id 구분용 TAB 누락")
+            testsuite_ok = False
+        else:
+            print("   ✓ gold 파일 포맷: gold_sql<TAB>db_id")
+else:
+    print("   ⚠️  artifacts/testsuite_gold.txt 또는 artifacts/testsuite_pred.txt가 없어 포맷 검증을 스킵합니다.")
+
+print(f"   test-suite 준비 상태: {'OK' if testsuite_ok else 'FAIL'}")
+
+print()
+
+# ============================================================
 # 최종 체크리스트
 # ============================================================
 print("=" * 70)
@@ -176,6 +233,7 @@ checklist = [
     ("main.py load_questions 호환", True),  # 위에서 검증함
     ("eval.py 모듈 로드 가능", True),  # 위에서 검증함
     ("Spider DB 경로 매핑", True),  # 위에서 검증함
+    ("test-suite 자산/아티팩트 준비", testsuite_ok),
 ]
 
 all_ok = all(status for _, status in checklist)

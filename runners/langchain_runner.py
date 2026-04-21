@@ -59,8 +59,11 @@ class LangChainOllamaRunner:
         cleaned = re.sub(r"^\s*`{1,3}\s*[a-zA-Z0-9_-]*\s*\n?", "", cleaned)
         cleaned = re.sub(r"\n?\s*`{1,3}\s*$", "", cleaned)
 
-        # 혹시 언어태그 조각이 앞에 남는 경우를 방지
-        cleaned = re.sub(r"^(sql|sqlite)\s*", "", cleaned, flags=re.IGNORECASE)
+        # 언어태그 조각이 앞에 남는 경우를 방지
+        cleaned = re.sub(r"^(sqlite|sql)\b\s*", "", cleaned, flags=re.IGNORECASE)
+
+        # 현재 결과물에서 보이는 접두 노이즈(예: "ite\nSELECT ...") 추가 제거
+        cleaned = re.sub(r"^ite\b\s*", "", cleaned, flags=re.IGNORECASE)
         return cleaned.strip()
 
     def generate_sql(self, question: str, schema: str, return_metadata: bool = False):
