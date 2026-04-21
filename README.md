@@ -322,7 +322,16 @@ spider/
 
 본 프로젝트에서는 **로컬 환경의 저장 공간 제약**으로 인해 Spider 전체 데이터셋을 포함하지 않습니다. 대신 다음과 같이 활용합니다:
 
-#### 방식 1: 필요한 DB만 선택적 다운로드
+#### 방식 1: Spider dataset 전체 다운로드
+```bash
+# Spider 공식 홈페이지에서 'spider dataset' 다운로드
+# https://yale-lily.github.io/spider
+
+# 해당 페이지 내 'Getting Started'
+# https://drive.google.com/file/d/1403EGqzIDoHMdQF4c9Bkyl7dZLZ5Wt6J/view?usp=sharing
+```
+
+#### 방식 2: 필요한 DB만 선택적 다운로드
 ```bash
 # Spider 공식 저장소에서 특정 DB만 다운로드
 # https://github.com/taoyds/spider
@@ -332,7 +341,7 @@ wget https://download.microsoft.com/download/.../academic.zip
 unzip academic.zip -d spider/database/
 ```
 
-#### 방식 2: 참고자료/questions 사용 (현재 방식)
+#### 방식 3: 참고자료/questions 사용 (현재 방식)
 본 프로젝트의 `참고자료/questions/` 디렉토리에는 수동으로 구성한 테스트 데이터셋이 있습니다:
 - `questions_gen_sqlite.csv`: SQLite용 질문 샘플 (간단한 도메인)
 - `questions_gen_mysql.csv`: MySQL용 질문 샘플
